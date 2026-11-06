@@ -2,6 +2,7 @@
   "expo": {
     "name": "meucontrolefinanceiro",
     "slug": "meucontrolefinanceiro",
+    "owner": "quessadag",
     "version": "1.0.0",
     "android": {
       "package": "com.usuario.meucontrolefinanceiro"
