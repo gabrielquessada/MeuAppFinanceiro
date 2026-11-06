@@ -2,7 +2,7 @@
   "expo": {
     "name": "meucontrolefinanceiro",
     "slug": "meucontrolefinanceiro",
-    "owner": "quessadag",
+    "owner": "quessadags-team",
     "version": "1.0.0",
     "android": {
       "package": "com.usuario.meucontrolefinanceiro"
@@ -12,5 +12,8 @@
         "projectId": "2061b88e-433d-4978-9df9-a7cb839076d4"
       }
     }
+  },
+  "cli": {
+    "appVersionSource": "remote"
   }
 }
