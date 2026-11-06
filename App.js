@@ -1,35 +1,339 @@
-import { StyleSheet, Text, View } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { 
+  StyleSheet, 
+  Text, 
+  View, 
+  ScrollView, 
+  TextInput, 
+  TouchableOpacity, 
+  SafeAreaView, 
+  StatusBar,
+  Dimensions
+} from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// You can import supported modules from npm
-import { Card } from 'react-native-paper';
-
-// or any files within the Snack
-import AssetExample from './components/AssetExample';
+const { width } = Dimensions.get('window');
 
 export default function App() {
+  const [activeTab, setActiveTab] = useState('dashboard');
+  const [transactions, setTransactions] = useState([]);
+  const [pixQueue, setPixQueue] = useState([]);
+  const [inputText, setInputText] = useState('');
+  
+  const [investPercent, setInvestPercent] = useState('20');
+  const [cdbShare, setCdbShare] = useState('60');
+
+  useEffect(() => {
+    loadLocalData();
+  }, []);
+
+  const loadLocalData = async () => {
+    try {
+      const savedTransactions = await AsyncStorage.getItem('@finance_transactions');
+      const savedPix = await AsyncStorage.getItem('@finance_pix_queue');
+      if (savedTransactions) setTransactions(JSON.parse(savedTransactions));
+      if (savedPix) setPixQueue(JSON.parse(savedPix));
+    } catch (e) {
+      console.error('Erro ao carregar dados locais', e);
+    }
+  };
+
+  const saveData = async (newTransactions, newPix) => {
+    try {
+      if (newTransactions) {
+        setTransactions(newTransactions);
+        await AsyncStorage.setItem('@finance_transactions', JSON.stringify(newTransactions));
+      }
+      if (newPix) {
+        setPixQueue(newPix);
+        await AsyncStorage.setItem('@finance_pix_queue', JSON.stringify(newPix));
+      }
+    } catch (e) {
+      console.error('Erro ao salvar dados localmente', e);
+    }
+  };
+
+  const processNotification = (text) => {
+    if (!text.trim()) return;
+    const lower = text.toLowerCase();
+
+    if (lower.includes('pix') && (lower.includes('recebido') || lower.includes('entrou'))) {
+      const match = text.match(/R\$\s?([\d.,]+)/);
+      const amount = match ? parseFloat(match[1].replace('.', '').replace(',', '.')) : 100.00;
+      
+      const newPixItem = {
+        id: Date.now().toString(),
+        rawText: text,
+        amount: amount,
+        date: new Date().toLocaleDateString('pt-BR')
+      };
+
+      saveData(null, [newPixItem, ...pixQueue]);
+    } else {
+      const match = text.match(/R\$\s?([\d.,]+)/);
+      const amount = match ? parseFloat(match[1].replace('.', '').replace(',', '.')) : 50.00;
+      
+      let category = 'Outros';
+      if (lower.includes('supermercado') || lower.includes('mercado') || lower.includes('extra')) category = 'Mercado';
+      else if (lower.includes('restaurante') || lower.includes('ifood') || lower.includes('lanche')) category = 'Alimentação';
+      else if (lower.includes('uber') || lower.includes('posto') || lower.includes('99')) category = 'Transporte';
+      else if (lower.includes('farmacia') || lower.includes('drogaria')) category = 'Saúde';
+
+      const newTx = {
+        id: Date.now().toString(),
+        type: 'expense',
+        category,
+        amount,
+        text,
+        date: new Date().toLocaleDateString('pt-BR')
+      };
+
+      saveData([newTx, ...transactions], null);
+    }
+    setInputText('');
+  };
+
+  const confirmPix = (item, category) => {
+    const newTx = {
+      id: item.id,
+      type: 'income',
+      category: category,
+      amount: item.amount,
+      text: item.rawText,
+      date: item.date
+    };
+
+    const updatedQueue = pixQueue.filter(p => p.id !== item.id);
+    const updatedTransactions = [newTx, ...transactions];
+    saveData(updatedTransactions, updatedQueue);
+  };
+
+  const totalIncome = transactions
+    .filter(t => t.type === 'income')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const totalExpense = transactions
+    .filter(t => t.type === 'expense')
+    .reduce((acc, t) => acc + t.amount, 0);
+
+  const netBalance = totalIncome - totalExpense;
+  const recommendedInvest = (totalIncome * (parseFloat(investPercent) || 0)) / 100;
+  const cdbAmount = (recommendedInvest * (parseFloat(cdbShare) || 0)) / 100;
+  const stocksAmount = recommendedInvest - cdbAmount;
+
   return (
-    <View style={styles.container}>
-      <Text style={styles.paragraph}>
-        Change code in the editor and watch it change on your phone! Save to get a shareable url.
-      </Text>
-      <Card>
-        <AssetExample />
-      </Card>
-    </View>
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
+      
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>💰 Gestão Financeira Local</Text>
+        <Text style={styles.headerSubtitle}>Seus dados ficam 100% no celular</Text>
+      </View>
+
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {activeTab === 'dashboard' && (
+          <View>
+            <View style={styles.cardRow}>
+              <View style={[styles.summaryCard, { backgroundColor: '#065f46' }]}>
+                <Text style={styles.cardLabel}>Entradas Mês</Text>
+                <Text style={styles.cardValue}>R$ {totalIncome.toFixed(2)}</Text>
+              </View>
+              <View style={[styles.summaryCard, { backgroundColor: '#991b1b' }]}>
+                <Text style={styles.cardLabel}>Gastos Mês</Text>
+                <Text style={styles.cardValue}>R$ {totalExpense.toFixed(2)}</Text>
+              </View>
+            </View>
+
+            <View style={styles.balanceCard}>
+              <Text style={styles.cardLabel}>Saldo Líquido Atual</Text>
+              <Text style={[styles.balanceValue, { color: netBalance >= 0 ? '#34d399' : '#f87171' }]}>
+                R$ {netBalance.toFixed(2)}
+              </Text>
+            </View>
+
+            {pixQueue.length > 0 && (
+              <TouchableOpacity 
+                style={styles.alertBanner} 
+                onPress={() => setActiveTab('pix')}
+              >
+                <Text style={styles.alertText}>⚠️ Há {pixQueue.length} Pix aguardando verificação!</Text>
+              </TouchableOpacity>
+            )}
+
+            <Text style={styles.sectionTitle}>Transações Recentes</Text>
+            {transactions.length === 0 ? (
+              <Text style={styles.emptyText}>Nenhuma transação registrada ainda. Vá em Notificações para testar.</Text>
+            ) : (
+              transactions.map(t => (
+                <View key={t.id} style={styles.transactionItem}>
+                  <View>
+                    <Text style={styles.txCategory}>{t.category}</Text>
+                    <Text style={styles.txText} numberOfLines={1}>{t.text}</Text>
+                  </View>
+                  <Text style={[styles.txAmount, { color: t.type === 'income' ? '#34d399' : '#f87171' }]}>
+                    {t.type === 'income' ? '+' : '-'} R$ {t.amount.toFixed(2)}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+
+        {activeTab === 'notifications' && (
+          <View>
+            <Text style={styles.sectionTitle}>Simular / Inserir Notificação</Text>
+            <Text style={styles.helperText}>Cole o texto da notificação do banco abaixo ou use os botões rápidos:</Text>
+            
+            <View style={styles.quickButtons}>
+              <TouchableOpacity style={styles.quickBtn} onPress={() => processNotification('Pix recebido de Carlos Silva no valor de R$ 350,00')}>
+                <Text style={styles.quickBtnText}>+ Testar Pix</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.quickBtn} onPress={() => processNotification('Compra aprovada no Mercado Extra no valor de R$ 120,50')}>
+                <Text style={styles.quickBtnText}>- Testar Mercado</Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={styles.input}
+              placeholder="Ex: Compra aprovada de R$ 45,90 em Uber..."
+              placeholderTextColor="#94a3b8"
+              value={inputText}
+              onChangeText={setInputText}
+            />
+            
+            <TouchableOpacity style={styles.mainButton} onPress={() => processNotification(inputText)}>
+              <Text style={styles.mainButtonText}>Processar Notificação</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {activeTab === 'pix' && (
+          <View>
+            <Text style={styles.sectionTitle}>Fila de Pix a Verificar</Text>
+            <Text style={styles.helperText}>Defina se o Pix recebido é Encomenda (Trabalho) ou Ajuda de Família:</Text>
+
+            {pixQueue.length === 0 ? (
+              <Text style={styles.emptyText}>Nenhum Pix pendente de validação no momento! 🎉</Text>
+            ) : (
+              pixQueue.map(item => (
+                <View key={item.id} style={styles.pixCard}>
+                  <Text style={styles.pixAmount}>R$ {item.amount.toFixed(2)}</Text>
+                  <Text style={styles.pixRaw}>{item.rawText}</Text>
+                  
+                  <View style={styles.pixActions}>
+                    <TouchableOpacity 
+                      style={[styles.pixChoiceBtn, { backgroundColor: '#0284c7' }]}
+                      onPress={() => confirmPix(item, 'Encomenda / Venda')}
+                    >
+                      <Text style={styles.pixChoiceText}>📦 Encomenda</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity 
+                      style={[styles.pixChoiceBtn, { backgroundColor: '#16a34a' }]}
+                      onPress={() => confirmPix(item, 'Família / Pessoal')}
+                    >
+                      <Text style={styles.pixChoiceText}>❤️ Família</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))
+            )}
+          </View>
+        )}
+
+        {activeTab === 'investments' && (
+          <View>
+            <Text style={styles.sectionTitle}>Planejador de Investimentos</Text>
+            <Text style={styles.helperText}>Separe seu dinheiro automaticamente com base na renda:</Text>
+
+            <View style={styles.investBox}>
+              <Text style={styles.label}>% da Renda para Guardar:</Text>
+              <TextInput 
+                style={styles.smallInput} 
+                keyboardType="numeric" 
+                value={investPercent} 
+                onChangeText={setInvestPercent} 
+              />
+
+              <Text style={styles.label}>Divisão em Renda Fixa (CDB %):</Text>
+              <TextInput 
+                style={styles.smallInput} 
+                keyboardType="numeric" 
+                value={cdbShare} 
+                onChangeText={setCdbShare} 
+              />
+
+              <View style={styles.resultBox}>
+                <Text style={styles.resultTitle}>Valor Sugerido para o Mês:</Text>
+                <Text style={styles.resultHighlight}>R$ {recommendedInvest.toFixed(2)}</Text>
+                <Text style={styles.resultSub}>🔒 CDB / Reserva: R$ {cdbAmount.toFixed(2)}</Text>
+                <Text style={styles.resultSub}>📈 Ações / Variável: R$ {stocksAmount.toFixed(2)}</Text>
+              </View>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      <View style={styles.navBar}>
+        <TouchableOpacity style={[styles.navItem, activeTab === 'dashboard' && styles.navActive]} onPress={() => setActiveTab('dashboard')}>
+          <Text style={styles.navText}>📊 Início</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.navItem, activeTab === 'notifications' && styles.navActive]} onPress={() => setActiveTab('notifications')}>
+          <Text style={styles.navText}>🔔 Leitor</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.navItem, activeTab === 'pix' && styles.navActive]} onPress={() => setActiveTab('pix')}>
+          <Text style={styles.navText}>💸 Pix ({pixQueue.length})</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.navItem, activeTab === 'investments' && styles.navActive]} onPress={() => setActiveTab('investments')}>
+          <Text style={styles.navText}>🚀 Invest</Text>
+        </TouchableOpacity>
+      </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    backgroundColor: '#ecf0f1',
-    padding: 8,
-  },
-  paragraph: {
-    margin: 24,
-    fontSize: 18,
-    fontWeight: 'bold',
-    textAlign: 'center',
-  },
+  container: { flex: 1, backgroundColor: '#0f172a' },
+  header: { padding: 20, backgroundColor: '#1e293b', borderBottomWidth: 1, borderBottomColor: '#334155' },
+  headerTitle: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
+  headerSubtitle: { fontSize: 12, color: '#94a3b8', marginTop: 2 },
+  scrollContent: { padding: 16, paddingBottom: 80 },
+  cardRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  summaryCard: { flex: 1, padding: 14, borderRadius: 12, marginRight: 6 },
+  cardLabel: { color: '#cbd5e1', fontSize: 13 },
+  cardValue: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginTop: 4 },
+  balanceCard: { backgroundColor: '#1e293b', padding: 16, borderRadius: 12, marginBottom: 16 },
+  balanceValue: { fontSize: 26, fontWeight: 'bold', marginTop: 4 },
+  alertBanner: { backgroundColor: '#b45309', padding: 12, borderRadius: 8, marginBottom: 16, alignItems: 'center' },
+  alertText: { color: '#fff', fontWeight: 'bold' },
+  sectionTitle: { fontSize: 16, fontWeight: 'bold', color: '#fff', marginBottom: 8, marginTop: 8 },
+  helperText: { color: '#94a3b8', fontSize: 13, marginBottom: 12 },
+  emptyText: { color: '#64748b', textAlign: 'center', marginTop: 20 },
+  transactionItem: { flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#1e293b', padding: 12, borderRadius: 8, marginBottom: 8, alignItems: 'center' },
+  txCategory: { color: '#38bdf8', fontWeight: 'bold', fontSize: 13 },
+  txText: { color: '#94a3b8', fontSize: 11, maxWidth: width * 0.5 },
+  txAmount: { fontWeight: 'bold', fontSize: 14 },
+  quickButtons: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  quickBtn: { backgroundColor: '#334155', padding: 10, borderRadius: 8, flex: 1, marginHorizontal: 4, alignItems: 'center' },
+  quickBtnText: { color: '#38bdf8', fontWeight: 'bold', fontSize: 12 },
+  input: { backgroundColor: '#1e293b', color: '#fff', padding: 12, borderRadius: 8, marginBottom: 12, borderWidth: 1, borderColor: '#334155' },
+  mainButton: { backgroundColor: '#2563eb', padding: 14, borderRadius: 8, alignItems: 'center' },
+  mainButtonText: { color: '#fff', fontWeight: 'bold' },
+  pixCard: { backgroundColor: '#1e293b', padding: 16, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: '#b45309' },
+  pixAmount: { fontSize: 22, fontWeight: 'bold', color: '#34d399', marginBottom: 4 },
+  pixRaw: { color: '#cbd5e1', fontSize: 13, marginBottom: 12 },
+  pixActions: { flexDirection: 'row', justifyContent: 'space-between' },
+  pixChoiceBtn: { flex: 1, padding: 10, borderRadius: 6, alignItems: 'center', marginHorizontal: 4 },
+  pixChoiceText: { color: '#fff', fontWeight: 'bold', fontSize: 12 },
+  investBox: { backgroundColor: '#1e293b', padding: 16, borderRadius: 12 },
+  label: { color: '#cbd5e1', fontSize: 13, marginTop: 8 },
+  smallInput: { backgroundColor: '#0f172a', color: '#fff', padding: 8, borderRadius: 6, marginTop: 4, borderWidth: 1, borderColor: '#334155' },
+  resultBox: { marginTop: 16, padding: 12, backgroundColor: '#0f172a', borderRadius: 8 },
+  resultTitle: { color: '#94a3b8', fontSize: 12 },
+  resultHighlight: { color: '#34d399', fontSize: 20, fontWeight: 'bold', marginVertical: 4 },
+  resultSub: { color: '#cbd5e1', fontSize: 12, marginTop: 2 },
+  navBar: { flexDirection: 'row', backgroundColor: '#1e293b', borderTopWidth: 1, borderTopColor: '#334155', position: 'absolute', bottom: 0, left: 0, right: 0 },
+  navItem: { flex: 1, padding: 12, alignItems: 'center' },
+  navActive: { borderTopWidth: 2, borderTopColor: '#38bdf8' },
+  navText: { color: '#cbd5e1', fontSize: 11 }
 });
