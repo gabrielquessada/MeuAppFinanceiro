@@ -20,11 +20,9 @@ export default function App() {
   const [pixQueue, setPixQueue] = useState([]);
   const [inputText, setInputText] = useState('');
   
-  // Configurações de Investimento
   const [investPercent, setInvestPercent] = useState('20');
   const [cdbShare, setCdbShare] = useState('60');
 
-  // Carregar dados salvos localmente no celular ao iniciar
   useEffect(() => {
     loadLocalData();
   }, []);
@@ -55,12 +53,10 @@ export default function App() {
     }
   };
 
-  // Processador de Notificações
   const processNotification = (text) => {
     if (!text.trim()) return;
     const lower = text.toLowerCase();
 
-    // Simulação de detecção de Pix Recebido
     if (lower.includes('pix') && (lower.includes('recebido') || lower.includes('entrou'))) {
       const match = text.match(/R\$\s?([\d.,]+)/);
       const amount = match ? parseFloat(match[1].replace('.', '').replace(',', '.')) : 100.00;
@@ -74,7 +70,6 @@ export default function App() {
 
       saveData(null, [newPixItem, ...pixQueue]);
     } else {
-      // Compra de Cartão / Saída
       const match = text.match(/R\$\s?([\d.,]+)/);
       const amount = match ? parseFloat(match[1].replace('.', '').replace(',', '.')) : 50.00;
       
@@ -98,12 +93,11 @@ export default function App() {
     setInputText('');
   };
 
-  // Confirmar Pix da Fila
   const confirmPix = (item, category) => {
     const newTx = {
       id: item.id,
       type: 'income',
-      category: category, // 'Encomenda' ou 'Família'
+      category: category,
       amount: item.amount,
       text: item.rawText,
       date: item.date
@@ -114,7 +108,6 @@ export default function App() {
     saveData(updatedTransactions, updatedQueue);
   };
 
-  // Cálculos do Dashboard
   const totalIncome = transactions
     .filter(t => t.type === 'income')
     .reduce((acc, t) => acc + t.amount, 0);
@@ -132,13 +125,11 @@ export default function App() {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" backgroundColor="#0f172a" />
       
-      {/* Header */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>💰 Gestão Financeira Local</Text>
         <Text style={styles.headerSubtitle}>Seus dados ficam 100% no celular</Text>
       </View>
 
-      {/* Conteúdo Principal por Abas */}
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {activeTab === 'dashboard' && (
           <View>
@@ -283,7 +274,6 @@ export default function App() {
         )}
       </ScrollView>
 
-      {/* Menu Inferior de Navegação */}
       <View style={styles.navBar}>
         <TouchableOpacity style={[styles.navItem, activeTab === 'dashboard' && styles.navActive]} onPress={() => setActiveTab('dashboard')}>
           <Text style={styles.navText}>📊 Início</Text>
