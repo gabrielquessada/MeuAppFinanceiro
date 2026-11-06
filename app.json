@@ -7,6 +7,9 @@
     "android": {
       "package": "com.usuario.meucontrolefinanceiro"
     },
+    "splash": {
+      "backgroundColor": "#0f172a"
+    },
     "extra": {
       "eas": {
         "projectId": "2061b88e-433d-4978-9df9-a7cb839076d4"
